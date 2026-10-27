@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PelajarSIGAP - Mode Demo</title>
+    
+    <!-- Font Inter (mirror Bunny Fonts; mode demo tidak menghubungi domain Google) -->
+    <link href="https://fonts.bunny.net/css?family=inter:300,400,500,600,700,800&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- MapLibre GL JS + Leaflet bridge (OpenFreeMap vector roads) -->
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+    <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+    <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: { primary: '#2563EB', primaryDark: '#1D4ED8' }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        #map { height: 200px; width: 100%; border-radius: 0.75rem; z-index: 10; }
+        video { transform: scaleX(1); object-fit: cover; } /* Adjust for mirror effect if needed */
+        .mirror { transform: scaleX(-1); }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans text-slate-800 flex items-center justify-center">
+
+    <!-- App Container (Mobile size for student, expands for admin) -->
+    <div id="app-container" class="bg-white w-full max-w-md min-h-screen sm:min-h-[90vh] sm:rounded-3xl sm:border-[6px] sm:border-slate-800 shadow-2xl relative overflow-hidden flex flex-col transition-all duration-500">
+        
+        <!-- ==================== AUTH VIEW ==================== -->
+        <div id="auth-view" class="absolute inset-0 bg-white z-50 flex flex-col p-6 fade-in overflow-y-auto">
+            <div class="flex-1 flex flex-col justify-center w-full">
+                <div class="text-center mb-8">
+                    <div class="w-16 h-16 bg-blue-50 text-primary rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
+                        <i class="fas fa-graduation-cap text-3xl"></i>
+                    </div>
+                    <h1 class="text-3xl font-bold tracking-tight">Pelajar<span class="text-primary">SIGAP</span></h1>
+                    <p class="text-slate-500 text-sm mt-1">Platform Pelaporan & Tanggap Darurat</p>
+                    <span class="demo-badge inline-flex items-center gap-1 mt-3 bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-full text-[11px] font-semibold"><i class="fas fa-flask"></i> Mode Demo (data tersimpan di browser ini)</span>
+                </div>
+
+                <div class="space-y-4">
+                    <!-- Info mode demo -->
+                    <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-xs leading-relaxed flex items-start gap-2">
+                        <i class="fas fa-flask mt-0.5"></i>
+                        <p>Ini versi demo tanpa server. Akun dan laporan hanya tersimpan di browser ini. Akun pertama yang didaftarkan menjadi Admin.</p>
+                    </div>
+                    <h2 id="auth-title" class="text-lg font-semibold text-center mb-2">Masuk ke Akun</h2>
+                    <form id="auth-form" class="space-y-4" novalidate>
+                        <div>
+                            <input type="email" id="auth-email" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary outline-none transition" placeholder="Email">
+                        </div>
+                        <div>
+                            <input type="password" id="auth-password" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary outline-none transition" placeholder="Password (min. 6 karakter)">
+                        </div>
+                        <button type="submit" id="auth-btn" class="w-full bg-primary hover:bg-primaryDark text-white font-semibold py-3 rounded-xl shadow-lg transition flex justify-center items-center gap-2">
+                            <span>Masuk</span>
+                        </button>
+                    </form>
+                    <p id="auth-error" class="hidden text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2"></p>
+                    <div class="text-center mt-4">
+                        <p class="text-xs text-slate-500">
+                            <span id="auth-switch-text">Belum punya akun?</span> 
+                            <button id="auth-switch-btn" class="text-primary font-semibold">Daftar</button>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== MAIN HEADER ==================== -->
+        <header id="main-header" class="hidden bg-white px-5 py-4 flex items-center justify-between shadow-sm z-20 border-b border-slate-100 sticky top-0">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-primary text-white rounded-xl flex items-center justify-center shadow-md">
+                    <i id="header-icon" class="fas fa-user"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight" id="header-title">PelajarSIGAP</h1>
+                    <p class="text-[10px] text-slate-500 font-medium uppercase" id="user-role-display">Siswa</p>
+                    <p class="text-[10px] text-slate-400 truncate max-w-[160px]" id="user-email-display"></p>
+                </div>
+            </div>
+            <span class="demo-badge hidden sm:inline-flex items-center gap-1 bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full text-[10px] font-semibold" title="Mode Demo (data tersimpan di browser ini)"><i class="fas fa-flask"></i> Mode Demo (data tersimpan di browser ini)</span>
+            <span class="demo-badge sm:hidden inline-flex items-center gap-1 bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full text-[10px] font-semibold" title="Mode Demo (data tersimpan di browser ini)"><i class="fas fa-flask"></i> Mode Demo</span>
+            <button onclick="logout()" class="w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-100 transition flex items-center justify-center">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </header>
+
+        <!-- ==================== STUDENT DASHBOARD ==================== -->
+        <main id="student-view" class="hidden flex-1 overflow-y-auto pb-24 bg-slate-50 relative flex-col">
+            
+            <!-- Tab: Laporan Saya -->
+            <div id="student-tab-list" class="p-5 space-y-4 fade-in block">
+                <div class="flex justify-between items-end">
+                    <h3 class="font-bold text-lg">Laporan Saya</h3>
+                </div>
+                <div id="student-reports-list" class="space-y-3 pb-4">
+                    <!-- Reports will be injected here -->
+                    <p class="text-center text-slate-400 text-sm mt-10">Memuat laporan...</p>
+                </div>
+            </div>
+
+            <!-- Tab: Buat Laporan -->
+            <div id="student-tab-form" class="p-5 fade-in hidden">
+                <h2 class="text-xl font-bold mb-4">Buat Laporan Baru</h2>
+                <form id="report-form" class="space-y-4">
+                    <!-- Judul -->
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Judul Laporan</label>
+                        <input type="text" id="form-title" required class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="Contoh: Atap Bocor di Kelas">
+                    </div>
+
+                    <!-- Peta & Lokasi -->
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Pilih Lokasi di Peta</label>
+                        <div id="map" class="mb-2 shadow-sm border border-slate-200"></div>
+                        <div class="flex items-start gap-2 mb-2">
+                            <button type="button" id="geo-locate-btn" onclick="locateMe()" class="shrink-0 bg-blue-50 text-primary px-3 py-1.5 rounded-lg border border-blue-100 text-xs font-semibold hover:bg-blue-100 transition flex items-center gap-1.5">
+                                <i class="fas fa-location-crosshairs"></i> Gunakan lokasi saya
+                            </button>
+                            <p id="geo-status" role="status" aria-live="polite" class="flex-1 text-xs text-slate-500 leading-snug pt-1">Klik peta untuk memilih lokasi, atau tekan "Gunakan lokasi saya".</p>
+                        </div>
+                        <input type="text" id="form-location" required class="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm text-slate-600 outline-none" readonly placeholder="Klik peta atau gunakan lokasi saya">
+                    </div>
+
+                    <!-- Foto (Kamera / Upload) -->
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Foto Bukti (Wajib)</label>
+                        
+                        <!-- Pilihan Metode -->
+                        <div class="flex gap-2 mb-2" id="photo-methods">
+                            <button type="button" onclick="startCamera()" class="flex-1 bg-blue-50 text-primary py-2 rounded-xl border border-blue-100 text-sm font-semibold hover:bg-blue-100 transition flex items-center justify-center gap-2">
+                                <i class="fas fa-camera"></i> Kamera
+                            </button>
+                            <label class="flex-1 bg-slate-50 text-slate-600 py-2 rounded-xl border border-slate-200 text-sm font-semibold hover:bg-slate-100 transition flex items-center justify-center gap-2 cursor-pointer">
+                                <i class="fas fa-upload"></i> Unggah
+                                <input type="file" class="hidden" accept="image/*" onchange="handleFileUpload(event)">
+                            </label>
+                        </div>
+
+                        <!-- Live Camera View -->
+                        <div id="camera-container" class="hidden relative rounded-xl overflow-hidden bg-black mb-2 aspect-[4/3] border-2 border-slate-200 shadow-inner">
+                            <video id="camera-video" class="w-full h-full object-cover" autoplay playsinline></video>
+                            
+                            <div class="absolute bottom-4 left-0 right-0 flex justify-center items-center gap-6 px-4">
+                                <button type="button" onclick="switchCamera()" class="w-10 h-10 bg-white/20 backdrop-blur rounded-full text-white flex items-center justify-center hover:bg-white/40">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                                <button type="button" onclick="capturePhoto()" class="w-14 h-14 bg-white border-4 border-slate-300 rounded-full flex items-center justify-center hover:bg-slate-200 active:scale-95 shadow-lg">
+                                </button>
+                                <button type="button" onclick="stopCamera()" class="w-10 h-10 bg-red-500/80 backdrop-blur rounded-full text-white flex items-center justify-center hover:bg-red-600">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Preview Image -->
+                        <div id="preview-container" class="hidden relative mt-2">
+                            <img id="preview-image" src="" class="w-full h-48 object-cover rounded-xl border border-slate-200 shadow-sm" alt="Preview">
+                            <button type="button" onclick="removePhoto()" class="absolute top-2 right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center shadow hover:bg-red-600">
+                                <i class="fas fa-trash-alt text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Deskripsi -->
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Deskripsi Lengkap</label>
+                        <textarea id="form-description" rows="3" required class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary outline-none resize-none" placeholder="Ceritakan detail kejadian..."></textarea>
+                    </div>
+
+                    <p id="report-form-msg" class="hidden text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2"></p>
+
+                    <!-- Submit -->
+                    <button type="submit" class="w-full bg-primary hover:bg-primaryDark text-white font-bold py-3.5 rounded-xl shadow-md transition flex justify-center items-center gap-2 mt-4">
+                        <i class="fas fa-paper-plane"></i> Kirim Laporan
+                    </button>
+                </form>
+            </div>
+
+            <!-- Student Bottom Nav -->
+            <nav class="absolute bottom-0 w-full bg-white border-t border-slate-200 px-6 py-3 flex justify-around items-center z-30 sm:rounded-b-3xl">
+                <button onclick="switchStudentTab('list')" id="nav-list" class="flex flex-col items-center text-primary transition-colors">
+                    <i class="fas fa-list text-xl mb-1"></i><span class="text-[10px] font-bold">Laporan</span>
+                </button>
+                <button onclick="switchStudentTab('form')" id="nav-form" class="flex flex-col items-center text-slate-400 hover:text-primary transition-colors">
+                    <i class="fas fa-plus-circle text-xl mb-1"></i><span class="text-[10px] font-bold">Buat Baru</span>
+                </button>
+            </nav>
+        </main>
+
+        <!-- ==================== ADMIN DASHBOARD ==================== -->
+        <main id="admin-view" class="hidden flex-1 overflow-y-auto bg-slate-100 relative p-4 md:p-6 flex-col">
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+                <div>
+                    <h2 id="admin-section-title" class="text-2xl font-bold text-slate-800">Manajemen Laporan</h2>
+                    <p id="admin-section-subtitle" class="text-sm text-slate-500">Tinjau dan kelola laporan dari seluruh siswa.</p>
+                </div>
+                <div class="flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm self-start sm:self-auto">
+                    <button type="button" id="admin-nav-reports" onclick="switchAdminTab('reports')" class="px-4 py-2 rounded-lg text-sm font-semibold transition bg-primary text-white">
+                        <i class="fas fa-clipboard-list mr-1"></i> Laporan
+                    </button>
+                    <button type="button" id="admin-nav-users" onclick="switchAdminTab('users')" class="px-4 py-2 rounded-lg text-sm font-semibold transition text-slate-500 hover:text-primary">
+                        <i class="fas fa-users-cog mr-1"></i> Kelola Pengguna
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab: Laporan -->
+            <div id="admin-tab-reports" class="fade-in">
+                <!-- Grid of Reports for Admin -->
+                <div id="admin-reports-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Cards injected here -->
+                    <p class="text-center text-slate-400 w-full col-span-full">Memuat laporan...</p>
+                </div>
+            </div>
+
+            <!-- Tab: Kelola Pengguna -->
+            <div id="admin-tab-users" class="hidden fade-in space-y-4">
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                    <h3 class="font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-user-plus text-primary"></i> Tambah Pengguna Baru</h3>
+                    <p class="text-xs text-slate-500 mt-1 mb-4">Akun baru dibuat tanpa mengeluarkan Anda dari sesi admin. (Mode demo: disimpan di browser ini.)</p>
+                    <form id="user-form" class="grid grid-cols-1 md:grid-cols-4 gap-3" novalidate>
+                        <input type="email" id="new-user-email" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="Email pengguna">
+                        <input type="password" id="new-user-password" required minlength="6" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="Password (min. 6 karakter)">
+                        <select id="new-user-role" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary outline-none">
+                            <option value="siswa" selected>Siswa</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                        <button type="submit" id="user-form-btn" class="w-full bg-primary hover:bg-primaryDark text-white font-semibold py-2.5 rounded-xl shadow-md transition flex justify-center items-center gap-2 text-sm">
+                            <i class="fas fa-plus"></i> Buat Akun
+                        </button>
+                    </form>
+                    <p id="user-form-msg" class="hidden mt-3 text-sm rounded-xl px-4 py-2"></p>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3 border-b border-slate-100 flex justify-between items-center">
+                        <h3 class="font-bold text-slate-800">Daftar Pengguna</h3>
+                        <span id="users-count" class="text-xs text-slate-500"></span>
+                    </div>
+                    <div id="users-list" class="divide-y divide-slate-100">
+                        <p class="text-center text-slate-400 text-sm py-6">Memuat pengguna...</p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-red-100 shadow-sm p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h3 class="font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-flask text-amber-500"></i> Data Demo</h3>
+                        <p class="text-xs text-slate-500 mt-1">Menghapus semua pengguna, laporan, dan sesi yang tersimpan di browser ini.</p>
+                    </div>
+                    <button type="button" id="reset-demo-btn" onclick="resetDemoData()" class="bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 font-semibold px-4 py-2.5 rounded-xl text-sm transition flex items-center justify-center gap-2">
+                        <i class="fas fa-trash-restore"></i> Reset data demo
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- ==================== OVERLAYS & MODALS ==================== -->
+        <!-- Loading Overlay -->
+        <div id="overlay-loading" class="hidden absolute inset-0 bg-white/80 z-[100] backdrop-blur-sm flex flex-col items-center justify-center">
+            <div class="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
+            <p id="loading-text" class="font-semibold text-slate-700">Memproses...</p>
+        </div>
+
+        <!-- Detail Modal (For Both Student & Admin) -->
+        <div id="modal-detail" class="hidden absolute inset-0 bg-black/60 z-[110] backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4">
+            <div class="bg-white w-full h-[85vh] sm:h-auto sm:max-h-[90vh] rounded-t-3xl sm:rounded-3xl flex flex-col overflow-hidden slide-up relative">
+                <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+                    <h3 class="font-bold text-lg" id="detail-title">Detail Laporan</h3>
+                    <button onclick="closeDetail()" class="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-slate-200">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="p-5 overflow-y-auto flex-1 space-y-4 pb-10" id="detail-content">
+                    <!-- Detail Image -->
+                    <img id="det-image" src="" class="w-full h-48 sm:h-64 object-cover rounded-xl bg-slate-100" alt="Bukti Laporan">
+                    
+                    <div class="flex justify-between items-center">
+                        <span id="det-status" class="px-3 py-1 text-xs font-bold rounded-full bg-yellow-100 text-yellow-700">Menunggu</span>
+                        <span id="det-date" class="text-xs text-slate-500">Tanggal</span>
+                    </div>
+
+                    <div>
+                        <h4 class="font-bold text-slate-800 text-lg" id="det-judul">Judul</h4>
+                        <p class="text-sm text-slate-600 mt-1" id="det-desc">Deskripsi</p>
+                    </div>
+
+                    <div class="flex items-start gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <i class="fas fa-map-marker-alt text-primary mt-1"></i>
+                        <p class="text-xs text-slate-700 flex-1" id="det-lokasi">Lokasi</p>
+                    </div>
+
+                    <!-- Gemini AI Analysis Section -->
+                    <div class="bg-blue-50/50 rounded-xl border border-blue-100 overflow-hidden mt-4">
+                        <div class="bg-blue-100/50 px-4 py-2 border-b border-blue-100 flex items-center gap-2">
+                            <i class="fas fa-sparkles text-primary text-sm"></i>
+                            <span class="text-xs font-bold text-primary uppercase">Analisis AI (5W1H)</span>
+                            <span class="ml-auto text-[10px] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Demo lokal</span>
+                        </div>
+                        <div class="p-4 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap" id="det-ai">
+                            <!-- AI Content -->
+                        </div>
+                    </div>
+                    
+                    <p id="detail-msg" class="hidden text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2"></p>
+
+                    <!-- Admin Action Buttons (Injected dynamically if Admin) -->
+                    <div id="admin-actions" class="hidden pt-4 border-t border-slate-100 grid-cols-2 gap-3 mt-4">
+                        <button onclick="updateReportStatus('Ditolak')" class="bg-red-50 text-red-600 hover:bg-red-100 py-3 rounded-xl font-bold transition">Tolak</button>
+                        <button onclick="updateReportStatus('Diterima')" class="bg-green-500 text-white hover:bg-green-600 py-3 rounded-xl font-bold transition shadow-lg shadow-green-500/30">Terima Laporan</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ==================== APPLICATION LOGIC (MODE DEMO) ==================== -->
+    <script type="module">
+        // =====================================================================
+        // MODE DEMO - TANPA FIREBASE
+        // Semua data (pengguna, sesi, laporan) disimpan di localStorage browser
+        // ini saja. Tidak ada server, tidak ada sinkronisasi antar perangkat.
+        // CATATAN KEAMANAN: hashing password di sisi klien (SHA-256 + salt per
+        // pengguna) di bawah ini HANYA untuk demo. Siapa pun yang membuka
+        // DevTools dapat membaca/mengubah data. Jangan gunakan untuk produksi.
+        // =====================================================================
+        const STORAGE_KEYS = {
+            users: 'pelajarsigap_demo_users',
+            reports: 'pelajarsigap_demo_reports',
+            session: 'pelajarsigap_demo_session'
+        };
+
+        // Globals
+        let currentUser = null;   // { uid, email, role, ... }
+        let currentRole = null;
+        let isAdmin = false;
+        let map = null;
+        let marker = null;
+        let accuracyCircle = null;   // lingkaran akurasi GPS (opsional)
+        let locationSource = null;   // null | 'auto' | 'manual' — sumber lokasi pada sesi form ini
+        let geoRequestSeq = 0;       // abaikan callback geolokasi yang sudah usang
+        let geoPending = false;
+        let reverseGeocodeSeq = 0;   // abaikan hasil reverse-geocode yang sudah usang
+        let currentReportBase64 = null;
+        let cameraStream = null;
+        let facingMode = 'environment';
+        let allReports = [];
+        let selectedReportId = null;
+
+        // Escape teks dari pengguna sebelum dimasukkan ke innerHTML
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        // ================= PENYIMPANAN LOKAL =================
+        function readJSON(key, fallback) {
+            try {
+                const raw = localStorage.getItem(key);
+                return raw ? JSON.parse(raw) : fallback;
+            } catch (e) {
+                console.warn('Data demo rusak, diabaikan:', key);
+                return fallback;
+            }
+        }
+
+        function isQuotaError(err) {
+            return !!err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22 || err.code === 1014);
+        }
+
+        // Melempar Error dengan pesan Indonesia bila penyimpanan penuh
+        function writeJSON(key, value) {
+            try {
+                localStorage.setItem(key, JSON.stringify(value));
+            } catch (err) {
+                if (isQuotaError(err)) {
+                    const e = new Error('Penyimpanan browser penuh. Hapus beberapa laporan atau gunakan "Reset data demo", lalu coba lagi dengan foto yang lebih kecil.');
+                    e.code = 'quota';
+                    throw e;
+                }
+                throw err;
+            }
+        }
+
+        const getUsers = () => readJSON(STORAGE_KEYS.users, []);
+        const getReports = () => readJSON(STORAGE_KEYS.reports, []);
+        const getSession = () => readJSON(STORAGE_KEYS.session, null);
+
+        function newId() {
+            if (crypto.randomUUID) return crypto.randomUUID();
+            return Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // ================= HASH PASSWORD (DEMO SAJA) =================
+        function randomSalt() {
+            return Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function hashPassword(password, salt) {
+            if (!crypto.subtle) throw new Error('Browser tidak mendukung Web Crypto. Buka aplikasi lewat http://localhost atau https.');
+            const data = new TextEncoder().encode(salt + ':' + password);
+            const digest = await crypto.subtle.digest('SHA-256', data);
+            return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+        function validateCredentials(email, password) {
+            if (!email) return 'Email wajib diisi.';
+            if (!EMAIL_RE.test(email)) return 'Format email tidak valid.';
+            if (!password || password.length < 6) return 'Password minimal 6 karakter.';
+            return null;
+        }
+
+        // Membuat akun baru. Akun pertama otomatis admin bila role tidak ditentukan.
+        async function createLocalUser(email, password, role) {
+            email = email.trim().toLowerCase();
+            const invalid = validateCredentials(email, password);
+            if (invalid) throw new Error(invalid);
+            const users = getUsers();
+            if (users.some(u => u.email === email)) throw new Error('Email sudah terdaftar.');
+            const salt = randomSalt();
+            const passwordHash = await hashPassword(password, salt);
+            const finalRole = role ? (role === 'admin' ? 'admin' : 'siswa') : (users.length === 0 ? 'admin' : 'siswa');
+            const user = { uid: newId(), email, role: finalRole, passwordHash, salt, createdAt: Date.now() };
+            // Baca ulang tepat sebelum menulis (mengurangi bentrok antar tab)
+            const fresh = getUsers();
+            if (fresh.some(u => u.email === email)) throw new Error('Email sudah terdaftar.');
+            if (!role && fresh.length > 0) user.role = 'siswa';
+            fresh.push(user);
+            writeJSON(STORAGE_KEYS.users, fresh);
+            return user;
+        }
+
+        async function verifyLogin(email, password) {
+            email = email.trim().toLowerCase();
+            if (!EMAIL_RE.test(email)) throw new Error('Format email tidak valid.');
+            if (!password) throw new Error('Password wajib diisi.');
+            const user = getUsers().find(u => u.email === email);
+            if (!user) throw new Error('Email atau password salah.');
+            const hash = await hashPassword(password, user.salt);
+            if (hash !== user.passwordHash) throw new Error('Email atau password salah.');
+            return user;
+        }
+
+        // ================= UI HELPERS =================
+        function showLoading(text = 'Memproses...') {
+            document.getElementById('loading-text').innerText = text;
+            document.getElementById('overlay-loading').classList.remove('hidden');
+        }
+        function hideLoading() {
+            document.getElementById('overlay-loading').classList.add('hidden');
+        }
+
+        // ================= AUTHENTICATION =================
+        let isLoginMode = true;
+        document.getElementById('auth-switch-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            setAuthMode(!isLoginMode);
+        });
+
+        function setAuthMode(loginMode) {
+            isLoginMode = loginMode;
+            showAuthError(null);
+            document.getElementById('auth-title').innerText = isLoginMode ? 'Masuk ke Akun' : 'Daftar Akun Baru';
+            document.getElementById('auth-btn').innerHTML = isLoginMode ? 'Masuk' : 'Daftar Sekarang';
+            document.getElementById('auth-switch-text').innerText = isLoginMode ? 'Belum punya akun?' : 'Sudah punya akun?';
+            document.getElementById('auth-switch-btn').innerText = isLoginMode ? 'Daftar' : 'Masuk';
+        }
+
+        function showAuthError(msg) {
+            const el = document.getElementById('auth-error');
+            if (!msg) { el.classList.add('hidden'); el.textContent = ''; return; }
+            el.textContent = msg;
+            el.classList.remove('hidden');
+        }
+
+        document.getElementById('auth-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            showAuthError(null);
+            const email = document.getElementById('auth-email').value.trim();
+            const password = document.getElementById('auth-password').value;
+            const invalid = validateCredentials(email.toLowerCase(), password);
+            if (invalid) { showAuthError(invalid); return; }
+
+            showLoading("Otentikasi...");
+            try {
+                const user = isLoginMode ? await verifyLogin(email, password) : await createLocalUser(email, password, null);
+                writeJSON(STORAGE_KEYS.session, { uid: user.uid, since: Date.now() });
+                document.getElementById('auth-form').reset();
+                routeSession();
+            } catch (err) {
+                showAuthError(err.message || String(err));
+            } finally {
+                hideLoading();
+            }
+        });
+
+        window.logout = () => {
+            if (cameraStream) stopCamera();
+            localStorage.removeItem(STORAGE_KEYS.session);
+            closeDetail();
+            resetToLogin();
+        };
+
+        function resetToLogin() {
+            currentUser = null;
+            currentRole = null;
+            isAdmin = false;
+            allReports = [];
+            document.getElementById('main-header').classList.add('hidden');
+            document.getElementById('student-view').classList.add('hidden');
+            document.getElementById('admin-view').classList.add('hidden');
+            document.getElementById('auth-view').classList.remove('hidden');
+            document.getElementById('app-container').classList.remove('max-w-4xl'); // reset width
+            setAuthMode(true);
+        }
+
+        // Membaca sesi dari localStorage dan menampilkan tampilan sesuai peran
+        function routeSession() {
+            const session = getSession();
+            const user = session ? getUsers().find(u => u.uid === session.uid) : null;
+            if (!user) {
+                if (session) localStorage.removeItem(STORAGE_KEYS.session);
+                resetToLogin();
+                return;
+            }
+            const sameUser = currentUser && currentUser.uid === user.uid && currentRole === user.role;
+            currentUser = user;
+            currentRole = user.role === 'admin' ? 'admin' : 'siswa';
+            isAdmin = currentRole === 'admin';
+            if (sameUser) { fetchReports(); if (isAdmin) fetchUsers(); return; }
+            showAuthError(null);
+
+            document.getElementById('auth-view').classList.add('hidden');
+            document.getElementById('main-header').classList.remove('hidden');
+            document.getElementById('header-icon').className = isAdmin ? 'fas fa-user-shield' : 'fas fa-graduation-cap';
+            document.getElementById('user-role-display').innerText = isAdmin ? 'Administrator' : 'Siswa';
+            document.getElementById('user-email-display').textContent = user.email;
+
+            if (isAdmin) {
+                document.getElementById('student-view').classList.add('hidden');
+                document.getElementById('admin-view').classList.remove('hidden');
+                document.getElementById('admin-view').classList.add('flex');
+                document.getElementById('app-container').classList.add('max-w-4xl'); // Wider for admin
+                switchAdminTab('reports');
+                fetchUsers();
+            } else {
+                document.getElementById('admin-view').classList.add('hidden');
+                document.getElementById('student-view').classList.remove('hidden');
+                document.getElementById('student-view').classList.add('flex');
+                document.getElementById('app-container').classList.remove('max-w-4xl');
+                resetReportLocation();
+                switchStudentTab('list');
+                // Peta dibuat saat tab "Buat Laporan" dibuka (lihat onReportFormShown),
+                // bukan di sini: kontainer #map masih tersembunyi (ukuran 0).
+            }
+            fetchReports();
+        }
+
+        // ================= LAPORAN (LOCALSTORAGE) =================
+        function fetchReports() {
+            if (!currentUser) return;
+            const reports = getReports();
+            // Admin melihat semua laporan; siswa hanya laporannya sendiri
+            allReports = isAdmin ? reports : reports.filter(r => r.userId === currentUser.uid);
+            allReports.sort((a, b) => b.createdAt - a.createdAt);
+            if (isAdmin) renderAdminReports(); else renderStudentReports();
+        }
+
+        function renderStudentReports() {
+            const list = document.getElementById('student-reports-list');
+            const myReports = allReports.filter(r => r.userId === currentUser.uid);
+
+            list.innerHTML = '';
+            if (myReports.length === 0) {
+                list.innerHTML = `<div class="text-center py-10 bg-white rounded-xl border border-slate-100">
+                    <i class="fas fa-folder-open text-3xl text-slate-300 mb-2"></i>
+                    <p class="text-slate-500 text-sm">Belum ada laporan.</p>
+                </div>`;
+                return;
+            }
+
+            myReports.forEach(r => {
+                const date = new Date(r.createdAt).toLocaleDateString('id-ID');
+                let badge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-[10px] font-bold">Menunggu</span>`;
+                if(r.status === 'Diterima') badge = `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">Diterima</span>`;
+                if(r.status === 'Ditolak') badge = `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold">Ditolak</span>`;
+
+                const html = `
+                    <div onclick="openDetail('${escapeHtml(r.id)}')" data-report-id="${escapeHtml(r.id)}" class="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex gap-3 active:scale-[0.98] transition cursor-pointer">
+                        <img src="${escapeHtml(r.image)}" class="w-20 h-20 object-cover rounded-lg bg-slate-100 flex-shrink-0" onerror="this.src='https://placehold.co/100x100/e2e8f0/94a3b8?text=Foto'">
+                        <div class="flex-1 flex flex-col justify-between overflow-hidden">
+                            <div>
+                                <h4 class="text-sm font-bold text-slate-800 line-clamp-1">${escapeHtml(r.title)}</h4>
+                                <p class="text-xs text-slate-500 line-clamp-1 mt-0.5"><i class="fas fa-map-marker-alt w-3"></i> ${escapeHtml(r.locationText)}</p>
+                            </div>
+                            <div class="flex justify-between items-center mt-2">
+                                <span class="text-[10px] text-slate-400">${escapeHtml(date)}</span>
+                                ${badge}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                list.insertAdjacentHTML('beforeend', html);
+            });
+        }
+
+        function renderAdminReports() {
+            const grid = document.getElementById('admin-reports-grid');
+            grid.innerHTML = '';
+
+            if (allReports.length === 0) {
+                grid.innerHTML = `<p class="col-span-full text-center text-slate-500 mt-10">Tidak ada laporan masuk.</p>`;
+                return;
+            }
+
+            allReports.forEach(r => {
+                const date = new Date(r.createdAt).toLocaleDateString('id-ID', {day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'});
+
+                let border = 'border-yellow-200';
+                let badge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold">Menunggu</span>`;
+                if(r.status === 'Diterima') { border = 'border-green-200'; badge = `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold"><i class="fas fa-check"></i> Diterima</span>`; }
+                if(r.status === 'Ditolak') { border = 'border-red-200'; badge = `<span class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold"><i class="fas fa-times"></i> Ditolak</span>`; }
+
+                const html = `
+                    <div class="bg-white rounded-2xl border ${border} shadow-sm overflow-hidden flex flex-col" data-report-id="${escapeHtml(r.id)}">
+                        <div class="relative h-40 bg-slate-100">
+                            <img src="${escapeHtml(r.image)}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/400x200/e2e8f0/94a3b8?text=Foto'">
+                            <div class="absolute top-2 right-2">${badge}</div>
+                        </div>
+                        <div class="p-4 flex-1 flex flex-col">
+                            <h3 class="font-bold text-slate-800 line-clamp-1">${escapeHtml(r.title)}</h3>
+                            <p class="text-xs text-slate-500 mb-2 mt-1"><i class="fas fa-clock mr-1"></i> ${escapeHtml(date)} &bull; ${escapeHtml(r.userEmail)}</p>
+                            <p class="text-xs text-slate-600 line-clamp-2 flex-1">${escapeHtml(r.description)}</p>
+
+                            <button onclick="openDetail('${escapeHtml(r.id)}')" class="mt-3 w-full bg-slate-50 hover:bg-slate-100 text-primary border border-slate-200 font-semibold py-2 rounded-xl text-sm transition">
+                                Lihat Detail & Proses
+                            </button>
+                        </div>
+                    </div>
+                `;
+                grid.insertAdjacentHTML('beforeend', html);
+            });
+        }
+
+        // ================= MAP LOGIC (LEAFLET) =================
+        function initMap() {
+            if (map !== null) {
+                map.invalidateSize();
+                return;
+            }
+
+            // Default center (Indonesia)
+            map = L.map('map').setView([-2.5489, 118.0149], 5);
+            // Basemaps: OpenFreeMap Liberty (vector, default) + HOT and OSM raster backups
+            const osmAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+            const vectorLayer = L.maplibreGL({
+                style: 'https://tiles.openfreemap.org/styles/liberty',
+                attributionControl: {
+                    customAttribution: '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a> Data from ' + osmAttribution
+                }
+            });
+            const hotLayer = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: osmAttribution + ', Tiles style by <a href="https://www.hotosm.org/" target="_blank">Humanitarian OpenStreetMap Team</a> hosted by <a href="https://openstreetmap.fr/" target="_blank">OpenStreetMap France</a>'
+            });
+            const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: osmAttribution
+            });
+            vectorLayer.addTo(map);
+            L.control.layers({
+                'Jalan (Vektor)': vectorLayer,
+                'Jalan (HOT)': hotLayer,
+                'OSM Standar': osmLayer
+            }).addTo(map);
+
+            // Klik manual pada peta selalu menimpa lokasi otomatis
+            map.on('click', function(e) {
+                setReportLocation(e.latlng.lat, e.latlng.lng, { source: 'manual' });
+                setGeoStatus('info', 'Lokasi dipilih manual dari peta. Tekan "Gunakan lokasi saya" untuk kembali ke posisi Anda.');
+            });
+        }
+
+        // Tempatkan/geser satu-satunya marker dan isi #form-location lewat reverse-geocode Nominatim
+        async function setReportLocation(lat, lng, opts = {}) {
+            const source = opts.source || 'manual';
+            locationSource = source;
+            if (marker) marker.setLatLng([lat, lng]);
+            else marker = L.marker([lat, lng]).addTo(map);
+            if (accuracyCircle) { map.removeLayer(accuracyCircle); accuracyCircle = null; }
+            if (source === 'auto' && opts.accuracy) {
+                accuracyCircle = L.circle([lat, lng], { radius: opts.accuracy, color: '#2563eb', weight: 1, fillOpacity: 0.12, interactive: false }).addTo(map);
+            }
+
+            const input = document.getElementById('form-location');
+            input.value = "Mengambil alamat...";
+            const seq = ++reverseGeocodeSeq;
+
+            // Reverse Geocoding using Nominatim
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+                const data = await res.json();
+                if (seq !== reverseGeocodeSeq) return;   // sudah ada lokasi yang lebih baru
+                input.value = data.display_name || `${lat}, ${lng}`;
+            } catch(err) {
+                if (seq !== reverseGeocodeSeq) return;
+                input.value = `${lat}, ${lng}`;
+            }
+        }
+
+        function setGeoStatus(kind, msg) {
+            const el = document.getElementById('geo-status');
+            const cls = { info: 'text-slate-500', loading: 'text-primary', success: 'text-green-700', error: 'text-red-600' };
+            el.className = 'flex-1 text-xs leading-snug pt-1 ' + (cls[kind] || cls.info);
+            el.dataset.kind = kind;
+            el.textContent = msg;   // textContent: tidak ada HTML yang disisipkan
+        }
+
+        const GEO_MANUAL_HINT = ' Anda tetap bisa klik peta untuk memilih lokasi secara manual.';
+
+        function geoErrorMessage(err) {
+            const inFrame = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
+            switch (err && err.code) {
+                case 1: // PERMISSION_DENIED
+                    return 'Izin lokasi ditolak. Aktifkan izin Lokasi untuk situs ini di pengaturan browser (ikon gembok/info di bilah alamat \u2192 Izin situs \u2192 Lokasi \u2192 Izinkan), lalu tekan "Gunakan lokasi saya".'
+                        + (inFrame ? ' Jika aplikasi dibuka di dalam pratinjau/iframe, buka langsung di tab browser.' : '') + GEO_MANUAL_HINT;
+                case 2: // POSITION_UNAVAILABLE
+                    return 'Posisi tidak tersedia. Pastikan layanan lokasi/GPS perangkat aktif dan ada sinyal/jaringan, lalu coba lagi.' + GEO_MANUAL_HINT;
+                case 3: // TIMEOUT
+                    return 'Waktu habis saat mencari lokasi. Coba lagi (sebaiknya di area terbuka atau dengan Wi-Fi aktif).' + GEO_MANUAL_HINT;
+                default:
+                    return 'Lokasi tidak dapat dideteksi' + (err && err.message ? ` (${err.message})` : '') + '.' + GEO_MANUAL_HINT;
+            }
+        }
+
+        // Minta lokasi perangkat. auto=true: dipanggil otomatis saat form dibuka
+        // (tidak akan menimpa lokasi yang sudah dipilih manual).
+        function requestUserLocation({ auto = false } = {}) {
+            if (!map) return;
+            if (!window.isSecureContext) {
+                setGeoStatus('error', `Lokasi otomatis hanya berfungsi di HTTPS atau localhost (halaman ini dibuka lewat ${location.protocol}//${location.host || ''}).` + GEO_MANUAL_HINT);
+                return;
+            }
+            if (!('geolocation' in navigator)) {
+                setGeoStatus('error', 'Browser ini tidak mendukung deteksi lokasi.' + GEO_MANUAL_HINT);
+                return;
+            }
+            const seq = ++geoRequestSeq;
+            geoPending = true;
+            setGeoStatus('loading', 'Mendeteksi lokasi Anda...');
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    if (seq !== geoRequestSeq) return;
+                    geoPending = false;
+                    if (auto && locationSource === 'manual') return;   // pengguna sudah memilih manual
+                    const { latitude, longitude, accuracy } = pos.coords;
+                    map.invalidateSize();
+                    map.setView([latitude, longitude], 17);
+                    setReportLocation(latitude, longitude, { source: 'auto', accuracy });
+                    const acc = Math.round(accuracy || 0);
+                    setGeoStatus('success', `Lokasi terdeteksi otomatis${acc ? ` (akurasi \u00b1${acc} m)` : ''}. Klik peta jika ingin menggeser titik.`
+                        + (acc > 500 ? ' Akurasi rendah \u2014 periksa kembali titiknya.' : ''));
+                },
+                (err) => {
+                    if (seq !== geoRequestSeq) return;
+                    geoPending = false;
+                    if (auto && locationSource === 'manual') return;
+                    setGeoStatus('error', geoErrorMessage(err));
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+            );
+        }
+
+        window.locateMe = () => requestUserLocation({ auto: false });
+
+        // Dipanggil setiap kali tab "Buat Laporan" terlihat
+        function onReportFormShown() {
+            initMap();                 // buat peta (sekali) atau invalidateSize
+            if (!locationSource && !geoPending) requestUserLocation({ auto: true });
+        }
+
+        // Hapus marker/lingkaran & status (setelah kirim, atau ganti pengguna)
+        function resetReportLocation() {
+            geoRequestSeq++; geoPending = false; reverseGeocodeSeq++;
+            locationSource = null;
+            if (map && marker) map.removeLayer(marker);
+            if (map && accuracyCircle) map.removeLayer(accuracyCircle);
+            marker = null; accuracyCircle = null;
+            document.getElementById('form-location').value = '';
+            setGeoStatus('info', 'Klik peta untuk memilih lokasi, atau tekan "Gunakan lokasi saya".');
+        }
+
+        // ================= CAMERA & IMAGE LOGIC =================
+        window.startCamera = async () => {
+            const container = document.getElementById('camera-container');
+            const video = document.getElementById('camera-video');
+            const previewContainer = document.getElementById('preview-container');
+
+            previewContainer.classList.add('hidden');
+            currentReportBase64 = null;
+
+            if (cameraStream) stopCamera();
+
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: facingMode }
+                });
+
+                // Mirror effect for front camera
+                if (facingMode === 'user') {
+                    video.classList.add('mirror');
+                } else {
+                    video.classList.remove('mirror');
+                }
+
+                video.srcObject = cameraStream;
+                container.classList.remove('hidden');
+                document.getElementById('photo-methods').classList.add('hidden');
+            } catch (err) {
+                console.error("Camera err:", err);
+                alert('Tidak dapat mengakses kamera. Pastikan izin diberikan.');
+            }
+        };
+
+        window.stopCamera = () => {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            document.getElementById('camera-container').classList.add('hidden');
+            if(!currentReportBase64) {
+                document.getElementById('photo-methods').classList.remove('hidden');
+            }
+        };
+
+        window.switchCamera = () => {
+            facingMode = facingMode === 'environment' ? 'user' : 'environment';
+            startCamera();
+        };
+
+        window.capturePhoto = () => {
+            const video = document.getElementById('camera-video');
+            const canvas = document.createElement('canvas');
+
+            // Resize agar hemat ruang localStorage (target lebar 640px)
+            const targetWidth = 640;
+            const scale = targetWidth / video.videoWidth;
+            canvas.width = targetWidth;
+            canvas.height = video.videoHeight * scale;
+
+            const ctx = canvas.getContext('2d');
+
+            // Handle mirror drawing for front camera
+            if (facingMode === 'user') {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Get base64 with moderate quality
+            const base64 = canvas.toDataURL('image/jpeg', 0.6);
+
+            setPreviewImage(base64);
+            stopCamera();
+        };
+
+        window.handleFileUpload = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                // Downscale uploaded image via canvas
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    const maxDim = 800;
+
+                    if (width > maxDim || height > maxDim) {
+                        if (width > height) {
+                            height = Math.round((height *= maxDim / width));
+                            width = maxDim;
+                        } else {
+                            width = Math.round((width *= maxDim / height));
+                            height = maxDim;
+                        }
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                    const base64 = canvas.toDataURL('image/jpeg', 0.6);
+                    setPreviewImage(base64);
+                }
+                img.onerror = () => showReportFormMsg('File yang dipilih bukan gambar yang valid.');
+                img.src = e.target.result;
+            }
+            reader.readAsDataURL(file);
+        };
+
+        function setPreviewImage(base64Str) {
+            currentReportBase64 = base64Str;
+            showReportFormMsg(null);
+            document.getElementById('preview-image').src = base64Str;
+            document.getElementById('preview-container').classList.remove('hidden');
+            document.getElementById('photo-methods').classList.add('hidden');
+        }
+
+        window.removePhoto = () => {
+            currentReportBase64 = null;
+            document.getElementById('preview-container').classList.add('hidden');
+            document.getElementById('photo-methods').classList.remove('hidden');
+            document.getElementById('report-form').querySelector('input[type="file"]').value = '';
+        };
+
+        // ================= ANALISIS 5W1H (DEMO LOKAL, BUKAN AI) =================
+        // Mode demo tidak memanggil Gemini atau layanan apa pun. Analisis di bawah
+        // hanya pencocokan kata kunci sederhana di browser sebagai placeholder.
+        const DEMO_CATEGORIES = [
+            { re: /kebakar|api|asap|terbakar/i, what: 'Dugaan kebakaran / asap', why: 'Kemungkinan korsleting listrik atau sumber api terbuka', how: 'Perlu pengecekan segera dan evakuasi bila diperlukan' },
+            { re: /banjir|genang|air meluap|bocor|rembes/i, what: 'Genangan air / kebocoran', why: 'Kemungkinan saluran tersumbat atau atap/pipa rusak', how: 'Area basah berisiko licin dan merusak fasilitas' },
+            { re: /lampu|listrik|kabel|stop ?kontak|korslet/i, what: 'Gangguan listrik / penerangan', why: 'Kemungkinan komponen listrik rusak atau putus', how: 'Area menjadi gelap atau berisiko tersengat listrik' },
+            { re: /kecelaka|jatuh|luka|cedera|pingsan|tabrak/i, what: 'Kecelakaan / cedera', why: 'Penyebab perlu dikonfirmasi di lokasi', how: 'Korban mungkin membutuhkan pertolongan pertama' },
+            { re: /bully|rundung|ejek|pukul|berkelahi|kekerasan/i, what: 'Dugaan perundungan / kekerasan', why: 'Konflik antar individu, perlu ditelusuri', how: 'Perlu pendampingan guru BK dan pihak sekolah' },
+            { re: /sampah|kotor|bau|jorok/i, what: 'Masalah kebersihan', why: 'Kemungkinan jadwal kebersihan tidak berjalan', how: 'Lingkungan tidak nyaman dan berisiko penyakit' },
+            { re: /rusak|pecah|retak|patah|atap|pintu|jendela|kursi|meja/i, what: 'Kerusakan fasilitas', why: 'Kemungkinan usia fasilitas atau pemakaian berlebih', how: 'Fasilitas tidak dapat digunakan dengan aman' }
+        ];
+        function analyzeDemoLocal(title, description, location, createdAt, email) {
+            const text = `${title} ${description}`;
+            const cat = DEMO_CATEGORIES.find(c => c.re.test(text));
+            const whoMatch = text.match(/\b(siswa|murid|guru|satpam|petugas|penjaga|teman|warga|kepala sekolah)\b/i);
+            const whenMatch = text.match(/\b(sejak [^.,;]+|tadi [a-z]+|kemarin|hari ini|pagi|siang|sore|malam)\b/i);
+            const whereMatch = description.match(/\bdi ([^.,;]{3,60})/i);
+            const what = cat ? cat.what : `Laporan: ${title}`;
+            return {
+                demo: true,
+                who: whoMatch ? `${whoMatch[1]} (disebut di laporan); pelapor: ${email}` : `Pelapor: ${email}`,
+                what,
+                where: whereMatch ? `${whereMatch[1].trim()} - ${location}` : location,
+                when: whenMatch ? `${whenMatch[1]} (dari teks); dilaporkan ${new Date(createdAt).toLocaleString('id-ID')}` : `Dilaporkan ${new Date(createdAt).toLocaleString('id-ID')}`,
+                why: cat ? cat.why : 'Belum dapat disimpulkan dari teks',
+                how: cat ? cat.how : 'Perlu peninjauan langsung oleh petugas',
+                kesimpulan: `[Demo, bukan AI] ${what} dilaporkan di ${location}.`
+            };
+        }
+
+        // ================= FORM SUBMISSION =================
+        function showReportFormMsg(msg) {
+            const el = document.getElementById('report-form-msg');
+            if (!msg) { el.classList.add('hidden'); el.textContent = ''; return; }
+            el.textContent = msg;
+            el.classList.remove('hidden');
+        }
+
+        document.getElementById('report-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!currentUser) return;
+            showReportFormMsg(null);
+
+            const title = document.getElementById('form-title').value.trim();
+            const location = document.getElementById('form-location').value.trim();
+            const desc = document.getElementById('form-description').value.trim();
+
+            if (!title || !desc) { showReportFormMsg('Judul dan deskripsi wajib diisi.'); return; }
+            if (!location || location === 'Mengambil alamat...') { showReportFormMsg('Klik peta untuk menentukan lokasi kejadian.'); return; }
+            if (!currentReportBase64) { showReportFormMsg('Harap ambil foto atau unggah gambar sebagai bukti.'); return; }
+
+            showLoading("Menyimpan laporan (mode demo)...");
+            try {
+                const createdAt = Date.now();
+                const report = {
+                    id: newId(),
+                    userId: currentUser.uid,
+                    userEmail: currentUser.email,
+                    title: title,
+                    locationText: location,
+                    lat: marker ? marker.getLatLng().lat : null,
+                    lng: marker ? marker.getLatLng().lng : null,
+                    description: desc,
+                    image: currentReportBase64,
+                    status: 'Menunggu',
+                    createdAt,
+                    aiAnalysis: analyzeDemoLocal(title, desc, location, createdAt, currentUser.email)
+                };
+                const reports = getReports();
+                reports.push(report);
+                writeJSON(STORAGE_KEYS.reports, reports);   // bisa melempar error kuota
+
+                hideLoading();
+                alert("Laporan berhasil dikirim!");
+
+                // Reset Form
+                document.getElementById('report-form').reset();
+                removePhoto();
+                resetReportLocation();
+                fetchReports();
+                switchStudentTab('list');
+            } catch (err) {
+                hideLoading();
+                showReportFormMsg((err.code === 'quota' ? '' : 'Gagal menyimpan laporan: ') + err.message);
+            }
+        });
+
+        // ================= UI TAB SWITCH (STUDENT) =================
+        window.switchStudentTab = (tab) => {
+            document.getElementById('student-tab-list').classList.add('hidden');
+            document.getElementById('student-tab-form').classList.add('hidden');
+
+            document.getElementById('nav-list').classList.replace('text-primary', 'text-slate-400');
+            document.getElementById('nav-form').classList.replace('text-primary', 'text-slate-400');
+
+            if (tab === 'list') {
+                document.getElementById('student-tab-list').classList.remove('hidden');
+                document.getElementById('nav-list').classList.replace('text-slate-400', 'text-primary');
+            } else {
+                document.getElementById('student-tab-form').classList.remove('hidden');
+                document.getElementById('nav-form').classList.replace('text-slate-400', 'text-primary');
+                setTimeout(() => onReportFormShown(), 100);
+            }
+        };
+
+        // ================= ADMIN TABS & KELOLA PENGGUNA =================
+        window.switchAdminTab = (tab) => {
+            const isUsers = tab === 'users';
+            document.getElementById('admin-tab-reports').classList.toggle('hidden', isUsers);
+            document.getElementById('admin-tab-users').classList.toggle('hidden', !isUsers);
+            const navReports = document.getElementById('admin-nav-reports');
+            const navUsers = document.getElementById('admin-nav-users');
+            const active = ['bg-primary', 'text-white'];
+            const inactive = ['text-slate-500', 'hover:text-primary'];
+            navReports.classList.remove(...active, ...inactive);
+            navUsers.classList.remove(...active, ...inactive);
+            (isUsers ? navUsers : navReports).classList.add(...active);
+            (isUsers ? navReports : navUsers).classList.add(...inactive);
+            document.getElementById('admin-section-title').innerText = isUsers ? 'Kelola Pengguna' : 'Manajemen Laporan';
+            document.getElementById('admin-section-subtitle').innerText = isUsers
+                ? 'Buat akun baru dan lihat peran seluruh pengguna.'
+                : 'Tinjau dan kelola laporan dari seluruh siswa.';
+        };
+
+        function fetchUsers() {
+            if (!isAdmin) return;
+            const users = getUsers().slice().sort((a, b) => (a.email || '').localeCompare(b.email || ''));
+            renderUsers(users);
+        }
+
+        function renderUsers(users) {
+            const list = document.getElementById('users-list');
+            document.getElementById('users-count').innerText = `${users.length} pengguna`;
+            if (users.length === 0) {
+                list.innerHTML = `<p class="text-center text-slate-400 text-sm py-6">Belum ada pengguna.</p>`;
+                return;
+            }
+            list.innerHTML = users.map(u => {
+                const admin = u.role === 'admin';
+                const created = u.createdAt ? new Date(u.createdAt).toLocaleDateString('id-ID') : '-';
+                const badge = admin
+                    ? `<span class="bg-blue-100 text-primary px-2 py-1 rounded text-xs font-bold"><i class="fas fa-user-shield mr-1"></i>Admin</span>`
+                    : `<span class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold"><i class="fas fa-graduation-cap mr-1"></i>Siswa</span>`;
+                const you = currentUser && u.uid === currentUser.uid ? ' <span class="text-[10px] text-slate-400">(Anda)</span>' : '';
+                return `
+                    <div class="px-5 py-3 flex items-center justify-between gap-3" data-user-email="${escapeHtml(u.email)}" data-user-role="${escapeHtml(u.role)}">
+                        <div class="flex items-center gap-3 overflow-hidden">
+                            <div class="w-9 h-9 rounded-full ${admin ? 'bg-blue-50 text-primary' : 'bg-slate-100 text-slate-500'} flex items-center justify-center flex-shrink-0">
+                                <i class="fas ${admin ? 'fa-user-shield' : 'fa-user'}"></i>
+                            </div>
+                            <div class="overflow-hidden">
+                                <p class="text-sm font-semibold text-slate-800 truncate">${escapeHtml(u.email)}${you}</p>
+                                <p class="text-[11px] text-slate-400">Terdaftar: ${escapeHtml(created)}</p>
+                            </div>
+                        </div>
+                        ${badge}
+                    </div>`;
+            }).join('');
+        }
+
+        function showUserFormMsg(msg, ok) {
+            const el = document.getElementById('user-form-msg');
+            el.textContent = msg;
+            el.className = `mt-3 text-sm rounded-xl px-4 py-2 border ${ok ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-600 border-red-100'}`;
+        }
+
+        document.getElementById('user-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!isAdmin) return;
+            const email = document.getElementById('new-user-email').value.trim();
+            const password = document.getElementById('new-user-password').value;
+            const role = document.getElementById('new-user-role').value === 'admin' ? 'admin' : 'siswa';
+
+            const btn = document.getElementById('user-form-btn');
+            btn.disabled = true;
+            btn.classList.add('opacity-60');
+            try {
+                // Sesi admin (pelajarsigap_demo_session) tidak disentuh sama sekali
+                const user = await createLocalUser(email, password, role);
+                showUserFormMsg(`Akun ${user.email} berhasil dibuat sebagai ${role === 'admin' ? 'Admin' : 'Siswa'}.`, true);
+                document.getElementById('user-form').reset();
+                fetchUsers();
+            } catch (err) {
+                showUserFormMsg('Gagal membuat akun: ' + err.message, false);
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-60');
+            }
+        });
+
+        // Reset semua data demo (pengguna, laporan, sesi) setelah konfirmasi
+        window.resetDemoData = () => {
+            if (!isAdmin) return;
+            if (!confirm('Hapus SEMUA data demo (pengguna, laporan, dan sesi) di browser ini? Tindakan ini tidak dapat dibatalkan.')) return;
+            Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
+            closeDetail();
+            resetToLogin();
+            showAuthError(null);
+        };
+
+        // ================= MODAL DETAIL & ADMIN ACTIONS =================
+        window.openDetail = (id) => {
+            const report = allReports.find(r => r.id === id);
+            if(!report) return;
+
+            selectedReportId = id;
+
+            document.getElementById('det-image').src = report.image;
+            document.getElementById('det-judul').innerText = report.title;
+            document.getElementById('det-desc').innerText = report.description;
+            document.getElementById('det-lokasi').innerText = report.locationText;
+            document.getElementById('det-date').innerText = new Date(report.createdAt).toLocaleString('id-ID');
+
+            // Status styling
+            const statusEl = document.getElementById('det-status');
+            statusEl.innerText = report.status;
+            statusEl.className = `px-3 py-1 text-xs font-bold rounded-full ${
+                report.status === 'Diterima' ? 'bg-green-100 text-green-700' :
+                report.status === 'Ditolak' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+            }`;
+
+            // 5W1H Formatting
+            const ai = report.aiAnalysis || {};
+            const aiHtml = `
+                <p class="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mb-2"><i class="fas fa-flask mr-1"></i>Mode demo: analisis kata kunci lokal, bukan AI.</p>
+                <p><strong>What:</strong> ${escapeHtml(ai.what || '-')}</p>
+                <p><strong>Who:</strong> ${escapeHtml(ai.who || '-')}</p>
+                <p><strong>Where:</strong> ${escapeHtml(ai.where || '-')}</p>
+                <p><strong>When:</strong> ${escapeHtml(ai.when || '-')}</p>
+                <p><strong>Why:</strong> ${escapeHtml(ai.why || '-')}</p>
+                <p><strong>How:</strong> ${escapeHtml(ai.how || '-')}</p>
+                <div class="mt-2 pt-2 border-t border-blue-200">
+                    <p class="font-bold text-primary">Kesimpulan: <span class="font-normal text-slate-700">${escapeHtml(ai.kesimpulan || '-')}</span></p>
+                </div>
+            `;
+            document.getElementById('det-ai').innerHTML = aiHtml;
+
+            // Admin Actions visibility
+            const adminActions = document.getElementById('admin-actions');
+            if (isAdmin && report.status === 'Menunggu') {
+                adminActions.classList.remove('hidden');
+                adminActions.classList.add('grid');
+            } else {
+                adminActions.classList.add('hidden');
+                adminActions.classList.remove('grid');
+            }
+            document.getElementById('detail-msg').classList.add('hidden');
+            document.getElementById('modal-detail').classList.remove('hidden');
+        };
+
+        window.closeDetail = () => {
+            document.getElementById('modal-detail').classList.add('hidden');
+            selectedReportId = null;
+        };
+
+        window.updateReportStatus = (newStatus) => {
+            if (!isAdmin || !selectedReportId) return;
+            try {
+                const reports = getReports();
+                const r = reports.find(x => x.id === selectedReportId);
+                if (!r) throw new Error('Laporan tidak ditemukan.');
+                r.status = newStatus;
+                r.reviewedBy = currentUser.email;
+                r.reviewedAt = Date.now();
+                writeJSON(STORAGE_KEYS.reports, reports);
+                fetchReports();
+                closeDetail();
+            } catch (err) {
+                const el = document.getElementById('detail-msg');
+                el.textContent = 'Gagal update: ' + err.message;
+                el.classList.remove('hidden');
+            }
+        };
+
+        // Sinkronisasi antar tab di browser yang sama
+        window.addEventListener('storage', (e) => {
+            if (!Object.values(STORAGE_KEYS).includes(e.key) && e.key !== null) return;
+            routeSession();
+        });
+
+        // ================= BOOTSTRAP =================
+        routeSession();
+    </script>
+</body>
+</html>
